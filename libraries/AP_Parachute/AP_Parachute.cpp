@@ -16,7 +16,7 @@ const AP_Param::GroupInfo AP_Parachute::var_info[] PROGMEM = {
     // @Description: Parachute release enabled or disabled
     // @Values: 0:Disabled,1:Enabled
     // @User: Standard
-    AP_GROUPINFO("ENABLED", 0, AP_Parachute, _enabled, 0),
+    AP_GROUPINFO("ENABLED", 0, AP_Parachute, _enabled, 1),
 
     // @Param: TYPE
     // @DisplayName: Parachute release mechanism type (relay or servo)
@@ -44,13 +44,54 @@ const AP_Param::GroupInfo AP_Parachute::var_info[] PROGMEM = {
     AP_GROUPINFO("SERVO_OFF", 3, AP_Parachute, _servo_off_pwm, AP_PARACHUTE_SERVO_OFF_PWM_DEFAULT),
 
     // @Param: ALT_MIN
-    // @DisplayName: Parachute min altitude in cm above home
+    // @DisplayName: Parachute min altitude in cm above home bla bla bla
     // @Description: Parachute min altitude above home.  Parachute will not be released below this altitude.  0 to disable alt check.
     // @Range: 0 32000
     // @Units: Meters
     // @Increment: 1
     // @User: Standard
     AP_GROUPINFO("ALT_MIN", 4, AP_Parachute, _alt_min, AP_PARACHUTE_ALT_MIN_DEFAULT),
+
+    // @Param: PITCHROLL
+    // @DisplayName: Pitch/roll threshold value in deg
+    // @Description: Pitch/roll threshold.  Parachute will be released when this value is exceeded.  0 to disable this release mode.
+    // @Range: 0 90
+    // @Units: Degrees
+    // @Increment: 5
+    // @User: Standard
+    AP_GROUPINFO("PITCHROLL", 5, AP_Parachute, _pitchroll_thres, AP_PARACHUTE_PITCHROLL_DEFAULT),
+
+    // @Param: FREEFALL
+    // @DisplayName: Freefall acceleration value in m/s2
+    // @Description: Freefall acceleration threshold.  Parachute will be released when this value is exceeded.  0 to disable this release mode.
+    // @Range: 0 10
+    // @Increment: 1
+    // @User: Standard
+    AP_GROUPINFO("FREEFALL", 6, AP_Parachute, _freefall_thres, AP_PARACHUTE_FREEFALL_DEFAULT),
+
+    // @Param: HDOT
+    // @DisplayName: Vertical speed in m/s
+    // @Description: Vertical speed threshold.  Parachute will be released when this value is exceeded.  0 to disable this release mode.
+    // @Range: 0 25
+    // @Increment: 1
+    // @User: Standard
+    AP_GROUPINFO("HDOT", 7, AP_Parachute, _hdot_thres, AP_PARACHUTE_HDOT_DEFAULT),
+
+    // @Param: ALT_MAX
+    // @DisplayName: Maximum allowable altitude in m
+    // @Description: Maximum altitude threshold.  Parachute will be released after the aircraft altitude exceeds this value. 0 to disable this release mode.
+    // @Range: 0 32000
+    // @Increment: 50
+    // @User: Standard
+    AP_GROUPINFO("ALT_MAX", 8, AP_Parachute, _alt_max_thres, AP_PARACHUTE_ALT_MAX_DEFAULT),
+
+    // @Param: DURATION
+    // @DisplayName: Abnormal flight pattern threshold duration in ms
+    // @Description: Maximum duration of abnormal flight pattern.  Parachute will be released after the specified amount of time has passed.
+    // @Range: 100 10000
+    // @Increment: 100
+    // @User: Standard
+    AP_GROUPINFO("DURATION", 9, AP_Parachute, _duration_thres, AP_PARACHUTE_DURATION_DEFAULT),
 
     AP_GROUPEND
 };
@@ -77,15 +118,21 @@ void AP_Parachute::release()
 
     // update AP_Notify
     AP_Notify::flags.parachute_release = 1;
+
 }
 
 /// update - shuts off the trigger should be called at about 10hz
 void AP_Parachute::update()
 {
+
+        //cliSerial->printf_P(PSTR("Climb rate: %f, roll: %lu (%lu), pitch: %lu (%lu), zacc: %f, throttle: %lu, case: %lu\n"),
+        //cliSerial->printf_P(PSTR("bla bla");
     // exit immediately if not enabled or parachute not to be released
+    //AP_Notify::flags.ok_flag = _release_time;
     if (_enabled <= 0 || _release_time == 0) {
         return;
     }
+
 
     // calc time since release
     uint32_t time_diff = hal.scheduler->millis() - _release_time;

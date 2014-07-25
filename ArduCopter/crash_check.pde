@@ -19,6 +19,8 @@ void crash_check()
     static uint8_t inverted_count;  // number of iterations we have been inverted
     static int32_t baro_alt_prev;
 
+
+
 #if PARACHUTE == ENABLED
     // check parachute
     parachute_check();
@@ -26,10 +28,12 @@ void crash_check()
 
     // return immediately if motors are not armed or pilot's throttle is above zero
     if (!motors.armed() || (g.rc_3.control_in != 0 && !failsafe.radio)) {
+
         inverted_count = 0;
         return;
     }
 
+//    cliSerial->print_P(PSTR("1"));
     // return immediately if we are not in an angle stabilize flight mode or we are flipping
     if (control_mode == ACRO || control_mode == FLIP) {
         inverted_count = 0;
@@ -44,6 +48,7 @@ void crash_check()
         // if we have just become inverted record the baro altitude
         if (inverted_count == 1) {
             baro_alt_prev = baro_alt;
+		//cliSerial->print_P(baro_alt);
 
         // exit if baro altitude change indicates we are moving (probably falling)
         }else if (labs(baro_alt - baro_alt_prev) > CRASH_CHECK_ALT_CHANGE_LIMIT_CM) {
@@ -83,75 +88,160 @@ void parachute_check()
     static uint8_t control_loss_count;	// number of iterations we have been out of control
     static int32_t baro_alt_start;
 
-    // exit immediately if parachute is not enabled
+    static uint8_t tick_count;
+    static uint8_t crash_case;
+
+    const Vector3f& target_angle = attitude_control.angle_ef_targets();
+
+
+    if (tick_count == 0 && motors.armed())
+    {
+        //cliSerial->printf_P(PSTR("Climb rate: %f (%lu), roll: %f (%lu), pitch: %f (%lu), zacc: %f, throttle: %lu, crash_case: %f\n"),
+                //climb_rate/100.0f,
+                //parachute.hdot_thres(),
+                //((ahrs.roll_sensor/100) % 360)*1.0f,
+                //parachute.pitchroll_thres(),
+                //((ahrs.pitch_sensor/100) % 360)*1.0f,
+                //parachute.pitchroll_thres(),
+                //ins.get_accel().z / GRAVITY_MSS,
+                //g.rc_3.servo_out/10,
+                //crash_case*1.0f);
+
+    }
+
+    //cliSerial->printf_P(PSTR("flags.parachute_release = %lu "),AP_Notify::flags.parachute_release);
+    //cliSerial->printf_P(PSTR("ok_flag = %lu\n"),AP_Notify::flags.ok_flag);
+    if (motors.armed()){
+    
+        if (parachute.hdot_thres() != 0)
+        {
+            if (climb_rate/100.0f < -parachute.hdot_thres() || climb_rate/100.0f > parachute.hdot_thres()) crash_case = 1;
+        }
+        if (parachute.freefall_thres() !=0)
+        {
+            if (ins.get_accel().z*1.0f > -parachute.freefall_thres()) crash_case = 2;
+        }
+        if (parachute.pitchroll_thres() != 0)
+        {
+            if (((labs(ahrs.roll_sensor)/100) % 360)*1.0f > parachute.pitchroll_thres() || ((labs(ahrs.pitch_sensor)/100)
+            %360)*1.0f > parachute.pitchroll_thres() ) crash_case = 3;
+        }
+
+        if (g.rc_3.servo_out/10 <= 13 && (baro_alt > (uint32_t)parachute.alt_min() * 100))
+        {
+            if(labs(ins.get_accel().x)>1 || 
+                labs(ins.get_accel().y)>1 || 
+                labs(ins.get_accel().z + GRAVITY_MSS)>1) crash_case = 4;
+        }
+        if (baro_alt > parachute.alt_max_thres()*100) crash_case = 5;
+        //if (labs(ahrs.roll_sensor - target_angle.x) > CRASH_CHECK_ANGLE_DEVIATION_CD ||
+            //labs(ahrs.pitch_sensor - target_angle.y) > CRASH_CHECK_ANGLE_DEVIATION_CD) crash_case = 0;
+
+    }
+        
+    tick_count++;
+    //return;
+    if (tick_count == 2)
+    {
+        tick_count = 0;
+    }
+    //parachute.enabled(true);
+    parachute.update();
     if (!parachute.enabled()) {
         return;
     }
 
-    // call update to give parachute a chance to move servo or relay back to off position
-    parachute.update();
+    if (crash_case > 0 && motors.armed()) {
+            control_loss_count++;
+            //cliSerial->printf_P(PSTR("%lu\n"),control_loss_count);
+            if (control_loss_count > parachute.duration_thres()/100) {
+                control_loss_count = parachute.duration_thres()/100;
+            }
 
-    // return immediately if motors are not armed or pilot's throttle is above zero
-    if (!motors.armed()) {
+            if (control_loss_count == PARACHUTE_CHECK_ITERATIONS_MAX) {
+                
+
+                switch (crash_case) {
+                    case 0:
+                        break;
+                    case 1:
+                        gcs_send_text_P(SEVERITY_HIGH,PSTR("Climb or descent rate too high"));
+                        break;
+                    case 2:
+                        gcs_send_text_P(SEVERITY_HIGH,PSTR("Vehicle in freefall"));
+                        break;
+                    case 3:
+                        gcs_send_text_P(SEVERITY_HIGH,PSTR("Attitude or roll too high"));
+                        break;
+                    case 4:
+                        gcs_send_text_P(SEVERITY_HIGH,PSTR("Motors off in flight"));
+                        break;
+                    case 5:
+                        gcs_send_text_P(SEVERITY_HIGH,PSTR("Altitude too high"));
+                        break;
+                }
+                control_loss_count = 0;
+                crash_case = 0;
+                parachute_release();
+                //crash_case = 0;
+                return;
+
+            }
+    } else {
         control_loss_count = 0;
         return;
-    }
-
-    // return immediately if we are not in an angle stabilize flight mode or we are flipping
-    if (control_mode == ACRO || control_mode == FLIP) {
-        control_loss_count = 0;
-        return;
-    }
-
-    // ensure we are flying
-    if (ap.land_complete) {
-        control_loss_count = 0;
-        return;
-    }
-
-    // ensure the first control_loss event is from above the min altitude
-    if (control_loss_count == 0 && parachute.alt_min() != 0 && (baro_alt < (uint32_t)parachute.alt_min() * 100)) {
-        return;
-    }
-
-    // get desired lean angles
-    const Vector3f& target_angle = attitude_control.angle_ef_targets();
-
-    // check roll and pitch angles
-    if (labs(ahrs.roll_sensor - target_angle.x) > CRASH_CHECK_ANGLE_DEVIATION_CD ||
-        labs(ahrs.pitch_sensor - target_angle.y) > CRASH_CHECK_ANGLE_DEVIATION_CD) {
-        control_loss_count++;
-
-        // don't let control_loss_count get too high
-        if (control_loss_count > PARACHUTE_CHECK_ITERATIONS_MAX) {
-            control_loss_count = PARACHUTE_CHECK_ITERATIONS_MAX;
-        }
-
-        // record baro alt if we have just started losing control
-        if (control_loss_count == 1) {
-            baro_alt_start = baro_alt;
-
-        // exit if baro altitude change indicates we are not falling
-        }else if (baro_alt >= baro_alt_start) {
-            control_loss_count = 0;
-            return;
-
-        // To-Do: add check that the vehicle is actually falling
-
-        // check if loss of control for at least 1 second
-        }else if (control_loss_count >= PARACHUTE_CHECK_ITERATIONS_MAX) {
-            // reset control loss counter
-            control_loss_count = 0;
-            // log an error in the dataflash
-            Log_Write_Error(ERROR_SUBSYSTEM_CRASH_CHECK, ERROR_CODE_CRASH_CHECK_LOSS_OF_CONTROL);
-            // release parachute
-            parachute_release();
-        }
-    }else{
-        // we are not inverted so reset counter
-        control_loss_count = 0;
     }
 }
+
+//static uint8_t parachute_auto()
+//{
+    //static uint8_t tick_count;
+    //static uint8_t crash_case;
+
+    //const Vector3f& target_angle = attitude_control.angle_ef_targets();
+
+
+    //if (tick_count == 0)
+    //{
+        //cliSerial->printf_P(PSTR("Climb rate: %f, roll: %lu (%lu), pitch: %lu (%lu), zacc: %f, throttle: %lu, case: %lu\n"),
+        //climb_rate/100.0f,
+        //(ahrs.roll_sensor/100) % 360,
+        //parachute.pitchroll_thres(),
+        //(ahrs.pitch_sensor/100) % 360,
+        //parachute.pitchroll_thres(),
+        //ins.get_accel().z / GRAVITY_MSS,
+        //g.rc_3.servo_out/10,
+        //crash_case);
+    //}
+    
+    //if (climb_rate/100.0f < -parachute.hdot_thres()*1.0f || climb_rate/100.0f > parachute.hdot_thres()*1.0f) crash_case = 1;
+    //if (ins.get_accel().z > -parachute.freefall_thres()) crash_case = 2;
+    //if ((labs(ahrs.roll_sensor)/100) % 360 > parachute.pitchroll_thres() || (labs(ahrs.pitch_sensor)/100) %360 >
+        //parachute.pitchroll_thres() ) crash_case = 3;
+    //if (motors.armed() && g.rc_3.servo_out/10 < 2)
+    //{
+        //if(labs(ins.get_accel().x / GRAVITY_MSS)>1.1 || 
+            //labs(ins.get_accel().y / GRAVITY_MSS)>1.1 || 
+            //labs(ins.get_accel().z / GRAVITY_MSS)>1.1) crash_case = 4;
+    //}
+    //if (labs(ahrs.roll_sensor - target_angle.x) > CRASH_CHECK_ANGLE_DEVIATION_CD ||
+        //labs(ahrs.pitch_sensor - target_angle.y) > CRASH_CHECK_ANGLE_DEVIATION_CD) crash_case = 5;
+            
+
+
+    
+
+
+
+    //tick_count++;
+    ////return;
+    //if (tick_count == 10)
+    //{
+        //tick_count = 0;
+    //}
+
+    //return crash_case;
+//}
 
 // parachute_release - trigger the release of the parachute, disarm the motors and notify the user
 static void parachute_release()
@@ -177,7 +267,8 @@ static void parachute_manual_release()
     }
 
     // do not release if we are landed or below the minimum altitude above home
-    if (ap.land_complete || (parachute.alt_min() != 0 && (baro_alt < (uint32_t)parachute.alt_min() * 100))) {
+    //if (ap.land_complete || (parachute.alt_min() != 0 && (baro_alt < (uint32_t)parachute.alt_min() * 100))) {
+    if ((parachute.alt_min() != 0 && (baro_alt < (uint32_t)parachute.alt_min() * 100))) {
         // warn user of reason for failure
         gcs_send_text_P(SEVERITY_HIGH,PSTR("Parachute: Too Low"));
         // log an error in the dataflash

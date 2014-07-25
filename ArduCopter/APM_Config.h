@@ -32,7 +32,7 @@
 
 // features below are disabled by default on APM (but enabled on Pixhawk)
 //#define AC_RALLY              ENABLED             // disable rally points to save 2k of flash, and also frees rally point EEPROM for more mission commands
-//#define PARACHUTE             ENABLED             // enable parachute release at a cost of 1k of flash
+#define PARACHUTE             ENABLED             // enable parachute release at a cost of 1k of flash
 
 // features below are disabled by default on all boards
 //#define OPTFLOW               ENABLED             // enable optical flow sensor and OF_LOITER flight mode at a cost of 5K of flash space

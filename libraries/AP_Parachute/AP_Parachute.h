@@ -22,7 +22,13 @@
 #define AP_PARACHUTE_SERVO_ON_PWM_DEFAULT      1300    // default PWM value to move servo to when shutter is activated
 #define AP_PARACHUTE_SERVO_OFF_PWM_DEFAULT     1100    // default PWM value to move servo to when shutter is deactivated
 
-#define AP_PARACHUTE_ALT_MIN_DEFAULT            10     // default min altitude the vehicle should have before parachute is released
+#define AP_PARACHUTE_ALT_MIN_DEFAULT            0     // default min altitude the vehicle should have before parachute is released
+
+#define AP_PARACHUTE_PITCHROLL_DEFAULT          50     // Maximum pitch/roll in flight (deg)
+#define AP_PARACHUTE_FREEFALL_DEFAULT           5      // Freefall detection threshold (m/s2)
+#define AP_PARACHUTE_HDOT_DEFAULT               10     // Maximum climb/descent rate   (m/s)
+#define AP_PARACHUTE_ALT_MAX_DEFAULT            250    // Maximum allowed altitude (m)
+#define AP_PARACHUTE_DURATION_DEFAULT           1000   // Abnormality duration (us)
 
 /// @class	AP_Parachute
 /// @brief	Class managing the release of a parachute
@@ -56,6 +62,13 @@ public:
     ///   0 = altitude check disabled
     int16_t alt_min() const { return _alt_min; }
 
+    /// Return custom release conditions
+    int8_t pitchroll_thres() const { return _pitchroll_thres; }
+    int8_t freefall_thres() const { return _freefall_thres; }
+    int8_t hdot_thres() const { return _hdot_thres; }
+    int16_t alt_max_thres() const {return _alt_max_thres; }
+    int16_t duration_thres() const { return _duration_thres; }
+
     static const struct AP_Param::GroupInfo        var_info[];
 
 private:
@@ -65,6 +78,11 @@ private:
     AP_Int16    _servo_on_pwm;  // PWM value to move servo to when shutter is activated
     AP_Int16    _servo_off_pwm; // PWM value to move servo to when shutter is deactivated
     AP_Int16    _alt_min;       // min altitude the vehicle should have before parachute is released
+    AP_Int8     _pitchroll_thres;// Maximum pitch/roll in flight (deg)
+    AP_Int8     _freefall_thres; // Freefall acceleration threshold (m/s2)
+    AP_Int8     _hdot_thres;        // Maximum climb/descent rate (m/s)
+    AP_Int16    _alt_max_thres;           // Maximum allowed altitude (m)
+    AP_Int16    _duration_thres;    // Abnormality duration threshold (us)
 
     // internal variables
     AP_Relay   &_relay;         // pointer to relay object from the base class Relay. The subclasses could be AP_Relay_APM1 or AP_Relay_APM2
